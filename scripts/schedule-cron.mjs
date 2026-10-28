@@ -227,7 +227,9 @@ async function main () {
   console.log(`every ${config.intervalMinutes} min (minutes ${confirmed ?? job.schedule.minutes.join(',')}), POST ${job.extendedData.body}`)
   if (next) console.log(`next execution: ${new Date(next * 1000).toISOString()}`)
   console.log(`tokens: cron-job.org ${mask(config.apiKey)}, github ${mask(config.githubToken)}`)
-  console.log('verify with: npm run schedule -- --history')
+  console.log(process.env.GITHUB_ACTIONS
+    ? 'verify with: gh workflow run schedule.yml -f command=history'
+    : 'verify with: npm run schedule -- --history')
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

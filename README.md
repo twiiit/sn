@@ -164,10 +164,6 @@ single page, and busier periods page further back automatically. If `MAX_PAGES`
 is reached before the window, the run logs a warning and reports it in the step
 summary instead of silently scanning less than it claims.
 
-A dry run that needs to look further back than 100 items is the one case where
-`MAX_ITEMS` alone used to matter; it is now the page size, and `MAX_PAGES` sets
-the depth.
-
 ## Local development
 
 ```sh

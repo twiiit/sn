@@ -1,0 +1,60 @@
+name: schedule dispatcher
+
+# Registers the cron-job.org job that calls this repository's workflow_dispatch
+# endpoint every 5 minutes, because GitHub's own scheduler runs a */5 cron far
+# less often than it promises (see README "External dispatcher").
+#
+# The job is created or updated in place, so re-running this never stacks up
+# duplicates: every push that changes the script keeps cron-job.org in sync with
+# the repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'What to do with the cron-job.org job'
+        type: choice
+        options:
+          - apply
+          - show
+          - history
+          - check
+          - delete
+        default: apply
+  push:
+    branches: [main]
+    paths:
+      - scripts/schedule-cron.mjs
+      - .github/workflows/schedule.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schedule-dispatcher
+  cancel-in-progress: false
+
+jobs:
+  schedule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # the script only uses node builtins and fetch, so there is nothing to
+      # install here
+      - name: Apply the dispatcher schedule
+        env:
+          DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          DISPATCH_INTERVAL_MINUTES: ${{ vars.DISPATCH_INTERVAL_MINUTES }}
+          COMMAND: ${{ inputs.command }}
+        run: |
+          case "$COMMAND" in
+            ""|apply) node scripts/schedule-cron.mjs ;;
+            *) node scripts/schedule-cron.mjs "--$COMMAND" ;;
+          esac

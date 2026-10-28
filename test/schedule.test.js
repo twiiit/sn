@@ -69,6 +69,6 @@ test('honours overrides for repo, workflow and ref', () => {
 })
 
 test('refuses to build a job without a token or a usable repo', () => {
-  assert.throws(() => buildJob({}), /GITHUB_DISPATCH_TOKEN/)
+  assert.throws(() => buildJob({}), /DISPATCH_TOKEN/)
   assert.throws(() => buildJob({ githubToken, repo: 'nope' }), /owner\/name/)
 })

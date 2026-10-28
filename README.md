@@ -182,9 +182,9 @@ executions with their HTTP status, and emails you when a job fails or is disable
 stays in place as a fallback, and the `concurrency` group means two triggers can
 only queue a run, never post twice.
 
-Nothing secret goes into the repository. Both credentials live in your local
-`.env`; the GitHub token is only stored in the cron-job.org job as a request
-header.
+Nothing secret goes into the repository itself: the credentials are repository
+secrets, and the GitHub token is only stored in the cron-job.org job as a
+request header.
 
 1. Create a **fine grained personal access token** for your account, limited to
    this repository with **Actions: read and write** (dispatching needs nothing
@@ -193,27 +193,35 @@ header.
    failures, emailing you first.
 2. Create an account at [cron-job.org](https://cron-job.org) and copy the API key
    from **Console → Settings**.
-3. Put both in `.env`:
+3. Add both as repository secrets (Settings → Secrets and variables → Actions):
+
+   | Secret | Value |
+   | --- | --- |
+   | `DISPATCH_TOKEN` | the fine grained PAT |
+   | `CRONJOB_API_KEY` | the cron-job.org API key |
+
+   `DISPATCH_TOKEN` cannot be named `GITHUB_DISPATCH_TOKEN`: GitHub reserves the
+   `GITHUB_` prefix for its own secrets.
+
+4. Run the [schedule dispatcher](.github/workflows/schedule.yml) workflow
+   (Actions → schedule dispatcher → Run workflow). It also runs on any push that
+   touches the script, so the job stays in sync with the repository.
 
    ```sh
-   GITHUB_DISPATCH_TOKEN=github_pat_...
-   CRONJOB_API_KEY=...
+   gh workflow run schedule.yml                      # create or update the job
+   gh workflow run schedule.yml -f command=show      # what is registered
+   gh workflow run schedule.yml -f command=history   # last executions + HTTP status
+   gh workflow run schedule.yml -f command=delete    # stop (cron fallback stays)
    ```
 
-4. Register the job, then check it:
+   With `DISPATCH_TOKEN` and `CRONJOB_API_KEY` in a local `.env`, the same script
+   runs from your machine: `npm run schedule`, and `npm run schedule -- --history`
+   and friends.
 
-   ```sh
-   npm run schedule                # create (or update) the 5 minute job
-   npm run schedule -- --check     # validate the GitHub token and workflow only
-   npm run schedule -- --show      # what is currently registered
-   npm run schedule -- --history   # last executions, with HTTP status
-   npm run schedule -- --delete    # stop dispatching (the cron fallback stays)
-   ```
-
-   `npm run schedule` validates the token against the repository before it
-   registers anything, finds its job by title and updates it in place, so
-   re-running never stacks up duplicates. `DISPATCH_INTERVAL_MINUTES` changes the
-   cadence (it must divide 60 evenly).
+   It validates the token against the repository before registering anything,
+   finds its job by title and updates it in place, so re-running never stacks up
+   duplicates. `DISPATCH_INTERVAL_MINUTES` changes the cadence (it must divide 60
+   evenly).
 
 Verify it end to end with `gh run list --event workflow_dispatch`: runs should
 appear about every 5 minutes, each lasting well under a minute, and

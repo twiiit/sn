@@ -13,9 +13,12 @@
 //   npm run schedule -- --history last executions, with HTTP status
 //   npm run schedule -- --delete remove the job
 //
-// Needs, in .env (never in the repository):
-//   GITHUB_DISPATCH_TOKEN  fine grained PAT with "Actions: read and write"
-//   CRONJOB_API_KEY        cron-job.org Console -> Settings -> API key
+// Needs, as repository secrets (or locally in .env):
+//   DISPATCH_TOKEN    fine grained PAT with "Actions: read and write"
+//   CRONJOB_API_KEY   cron-job.org Console -> Settings -> API key
+//
+// The name cannot start with GITHUB_, which GitHub reserves for its own
+// secrets (GITHUB_TOKEN, GITHUB_REPOSITORY, ...).
 
 import { pathToFileURL } from 'node:url'
 
@@ -58,7 +61,7 @@ export function buildJob ({
   title
 } = {}) {
   if (!repo || !repo.includes('/')) throw new Error('repo must look like "owner/name"')
-  if (!githubToken) throw new Error('GITHUB_DISPATCH_TOKEN is not set')
+  if (!githubToken) throw new Error('DISPATCH_TOKEN is not set')
 
   return {
     url: `${GITHUB_API}/repos/${repo}/actions/workflows/${workflow}/dispatches`,
@@ -107,7 +110,7 @@ function readConfig () {
     intervalMinutes: Number(process.env.DISPATCH_INTERVAL_MINUTES || DEFAULT_INTERVAL_MINUTES),
     apiUrl: process.env.CRONJOB_API_URL || DEFAULT_API_URL,
     apiKey: process.env.CRONJOB_API_KEY,
-    githubToken: process.env.GITHUB_DISPATCH_TOKEN
+    githubToken: process.env.DISPATCH_TOKEN
   }
 }
 
@@ -130,7 +133,7 @@ async function checkGithub ({ repo, workflow, githubToken }) {
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
-    throw new Error(`GitHub rejected GITHUB_DISPATCH_TOKEN (HTTP ${res.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`)
+    throw new Error(`GitHub rejected DISPATCH_TOKEN (HTTP ${res.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`)
   }
 
   const data = await res.json()
@@ -146,7 +149,7 @@ async function main () {
   const config = readConfig()
 
   if (!config.apiKey) return fail('CRONJOB_API_KEY is not set (cron-job.org Console -> Settings -> API key)')
-  if (!config.githubToken) return fail('GITHUB_DISPATCH_TOKEN is not set (fine grained PAT, Actions: read and write)')
+  if (!config.githubToken) return fail('DISPATCH_TOKEN is not set (fine grained PAT, Actions: read and write)')
 
   const api = config.apiUrl.replace(/\/+$/, '')
   const headers = {

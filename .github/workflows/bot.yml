@@ -2,8 +2,10 @@ name: sn-twiiit bot
 
 on:
   schedule:
-    # GitHub runs this on the closest available runner; delays of a few minutes
-    # are normal. The bot is idempotent, so late runs are harmless.
+    # Fallback only. GitHub's scheduler is best effort: this cron measured about
+    # one run every 40 minutes, so the 5 minute cadence comes from the external
+    # dispatcher instead (README "External dispatcher"). The bot is idempotent,
+    # so a late or overlapping run is harmless.
     - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:

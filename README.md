@@ -164,6 +164,53 @@ single page, and busier periods page further back automatically. If `MAX_PAGES`
 is reached before the window, the run logs a warning and reports it in the step
 summary instead of silently scanning less than it claims.
 
+### External dispatcher
+
+A wide window absorbs a slow scheduler; it cannot fix it. If you want the
+intended 5 minute cadence, drive the workflow from outside GitHub.
+
+[Upstash QStash](https://upstash.com/docs/qstash/features/schedules) is a hosted
+cron for HTTP endpoints: it POSTs the workflow dispatch API on a schedule, which
+starts a real run. It needs no server here, the free tier is 1,000 messages/day
+against the 288 a 5 minute cadence uses, and every delivery is logged with
+retries in the Upstash console. The workflow's own cron stays in place as a
+fallback, and the `concurrency` group means two triggers can only queue a run,
+never post twice.
+
+Nothing secret goes into the repository. Both credentials live in your local
+`.env`; only the GitHub token is handed to QStash, as a forwarded header.
+
+1. Create a **fine grained personal access token** for your account, limited to
+   this repository with **Actions: read and write** (dispatching needs nothing
+   else). Set an expiry and renew it when it lapses — when it expires, dispatches
+   start failing with 401 and the schedule stops doing anything.
+2. Create a [QStash](https://console.upstash.com/qstash) account and copy the
+   token from the console.
+3. Put both in `.env`:
+
+   ```sh
+   GITHUB_DISPATCH_TOKEN=github_pat_...
+   QSTASH_TOKEN=...
+   ```
+
+4. Register the schedule, then check it:
+
+   ```sh
+   npm run schedule              # create or update the */5 schedule
+   npm run schedule -- --check   # validate the GitHub token and workflow only
+   npm run schedule -- --show    # what is currently registered
+   npm run schedule -- --delete  # stop dispatching (the cron fallback stays)
+   ```
+
+   `npm run schedule` verifies the token against the repository before it
+   registers anything, and re-running it overwrites the same schedule instead of
+   adding a second one.
+
+Verify it end to end with `gh run list --event workflow_dispatch`: runs should
+appear about every 5 minutes, each lasting well under a minute. If they stop, the
+usual causes are an expired PAT (401 in the QStash logs) or the workflow being
+disabled (GitHub returns 422 for a disabled workflow).
+
 ## Local development
 
 ```sh

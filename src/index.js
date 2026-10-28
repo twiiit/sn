@@ -11,6 +11,11 @@ import { findStatusLinks, buildComment } from './links.js'
 
 const log = (...args) => console.log(new Date().toISOString(), ...args)
 
+// stacker.news pays for each comment from sats + cowboy credits (~1 sat), and
+// only writes it unpaid when both run out. This footnote only shows up when the
+// balance is low, so it never nags while the bot is funded.
+const DEFAULT_FUNDING_FOOTER = 'bot · funded by zaps — zap this comment or send sats to twiiit@rizful.com'
+
 function envInt (name, fallback) {
   const raw = process.env[name]
   if (raw == null || raw.trim() === '') return fallback
@@ -33,7 +38,9 @@ function readConfig () {
     maxItems: envInt('MAX_ITEMS', 100),
     maxAgeMinutes: envInt('ITEM_MAX_AGE_MINUTES', 60),
     maxCommentsPerRun: envInt('MAX_COMMENTS_PER_RUN', 20),
-    postDelayMs: envInt('POST_DELAY_MS', 5000)
+    postDelayMs: envInt('POST_DELAY_MS', 5000),
+    lowBalanceSats: envInt('SN_LOW_BALANCE_SATS', 100),
+    fundingFooter: (process.env.SN_FUNDING_FOOTER || DEFAULT_FUNDING_FOOTER).trim()
   }
 }
 
@@ -86,6 +93,14 @@ async function main () {
   }
   log(`logged in as ${me.name} (id ${me.id})`)
 
+  // 1 comment costs ~1 sat, so the balance is roughly the number of replies left
+  const wallet = await sn.fetchWallet()
+  const balance = wallet.sats + wallet.credits
+  const lowBalance = config.lowBalanceSats > 0 && balance < config.lowBalanceSats
+  const footer = lowBalance ? config.fundingFooter : ''
+  log(`balance: ${wallet.sats} sats + ${wallet.credits} cowboy credits` +
+    (footer ? ` (below ${config.lowBalanceSats}, replies will invite zaps)` : ''))
+
   const maxAgeMs = config.maxAgeMinutes * 60_000
   const items = await sn.recentItems({ limit: config.maxItems })
   log(`fetched ${items.length} recent items`)
@@ -110,7 +125,7 @@ async function main () {
     if (links.length === 0) continue
     stats.withLinks++
 
-    const text = buildComment(links, redirector.baseUrl)
+    const text = buildComment(links, redirector.baseUrl, { footer })
     log(`item ${item.id} (${item.user?.name}) has ${links.length} x.com link(s): ${text.replace(/\n/g, ' ')}`)
 
     try {
@@ -162,6 +177,7 @@ async function main () {
     '### sn-twiiit run',
     '',
     `- redirector: \`${redirector.host}\`${redirector.attempts.length > 1 ? ` (after ${redirector.attempts.length - 1} unavailable)` : ''}`,
+    `- balance: ${wallet.sats} sats + ${wallet.credits} cowboy credits${footer ? ' (low, zap footer added)' : ''}`,
     `- scanned: ${stats.scanned} recent posts, ${stats.withLinks} with x.com links`,
     `- commented: ${stats.commented}${config.dryRun ? ' (dry run)' : ''}`,
     `- already handled: ${stats.alreadyCommented}`,

@@ -31,10 +31,15 @@ Every run (every 5 minutes):
    with the nsec (a NIP-98 style `kind 27235` event), and exchanges it for a
    session cookie via `/api/auth/callback/nostr`. It then verifies that the
    session belongs to `SN_BOT_NAME` (`twiiit`) and aborts otherwise.
-3. **Scan.** Fetches the newest items, keeps top level posts younger than
+3. **Check the balance.** Reads the account's `sats` + cowboy credits and logs
+   them. Comments are paid from both (~1 sat each), so the balance is roughly how
+   many replies the bot can still post. When it drops below
+   `SN_LOW_BALANCE_SATS` (default 100), replies get a one line footnote inviting
+   readers to zap them — see [Funding](#funding).
+4. **Scan.** Fetches the newest items, keeps top level posts younger than
    `ITEM_MAX_AGE_MINUTES` (default 60), and looks for x.com/twitter.com status
    links in the post URL, title and text.
-4. **Reply.** For each post with links it posts one comment containing the
+5. **Reply.** For each post with links it posts one comment containing the
    rewritten links (one per line). Before posting it checks whether the bot
    already commented on that post — using `newComments` for the post — so a run
    that overlaps or repeats never posts twice. At most `MAX_COMMENTS_PER_RUN`
@@ -55,11 +60,32 @@ Every run (every 5 minutes):
    *unpaid*, invisible-to-others draft — the bot detects this, stops the run and
    fails the workflow so you notice.
 
+## Funding
+
+The bot is funded by zaps. Every comment it posts has a zap button, and zaps to
+it land in the account's cowboy credits, which pay for the next comments.
+
+So it does not beg on every reply, the ask is a low balance signal only: below
+`SN_LOW_BALANCE_SATS` (default 100, i.e. ~100 replies left) each comment gets a
+small GFM footnote — a superscript marker next to the links and a muted line at
+the bottom:
+
+```
+https://twiiit.com/jack/status/20 [^1]
+
+[^1]: bot · funded by zaps — zap this comment or send sats to twiiit@rizful.com
+```
+
+The footnote text is `SN_FUNDING_FOOTER`, so the address can be changed without
+touching the bot. Once the balance is back above the threshold, the footnote
+disappears by itself. Set `SN_LOW_BALANCE_SATS=0` to never show it.
+
 ### Optional repository variable
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SN_REDIRECTOR` | `twiiit.com` | Preferred redirector host. Still health checked; if it is down the bot falls back to the wiki list. |
+| `SN_LOW_BALANCE_SATS` | `100` | Invite zaps in replies while the balance is below this. `0` disables the footer. |
 
 ### Optional environment overrides
 
@@ -74,6 +100,8 @@ Set these in the workflow `env:` block or locally in `.env`:
 | `MAX_ITEMS` | `100` | How many recent items to fetch |
 | `MAX_COMMENTS_PER_RUN` | `20` | Comment limit per run |
 | `POST_DELAY_MS` | `5000` | Pause between comments |
+| `SN_LOW_BALANCE_SATS` | `100` | Balance (sats + cowboy credits) below which replies invite zaps |
+| `SN_FUNDING_FOOTER` | `bot · funded by zaps — …` | Text of that footnote |
 
 ## Local development
 
@@ -98,6 +126,11 @@ npm test
   datacenter IP: a redirector may look healthy there but be rate limiting for
   some end users. The wiki list itself is the best source of truth for how well
   instances are doing.
+- If the account has nostr crossposting enabled, replies are published as notes
+  too. The funding footnote is markdown: clients that understand footnotes show a
+  small note at the bottom, plain text clients show the `[^1]:` line literally.
+  Stacker News also supports `<sub>…</sub>`, which is a drop-in alternative in
+  `buildComment` if the footnote looks bad on nostr.
 - GitHub disables scheduled workflows in public repositories after 60 days
   without repository activity. If the bot goes quiet, re-enable the workflow in
   the Actions tab (or push any commit, e.g. a touch to this README).

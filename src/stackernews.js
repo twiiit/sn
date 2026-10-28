@@ -172,6 +172,37 @@ export class StackerNewsClient {
     return me
   }
 
+  /**
+   * The account's spendable balance. stacker.news pays for comments from `sats`
+   * plus `credits` (cowboy credits, which is also where zaps to bios and free
+   * comments land), and only treats a comment as paid when both together cover
+   * its cost - so a low balance means comments will start coming out unpaid.
+   * @returns {Promise<{ sats: number, credits: number, freeCommentsLeft: number }>}
+   */
+  async fetchWallet () {
+    const { me } = await this.gql(`
+      query {
+        me {
+          id
+          privates {
+            sats
+            credits
+            freeCommentsLeft
+          }
+        }
+      }
+    `)
+
+    const privates = me?.privates
+    if (!privates) throw new SnApiError('could not read the account balance (is the session authenticated?)')
+
+    return {
+      sats: Number(privates.sats ?? 0),
+      credits: Number(privates.credits ?? 0),
+      freeCommentsLeft: Number(privates.freeCommentsLeft ?? 0)
+    }
+  }
+
   /** Recent items, newest first. */
   async recentItems ({ limit = 100 } = {}) {
     const { items } = await this.gql(`

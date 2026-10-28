@@ -51,3 +51,21 @@ test('builds redirector urls and the comment body', () => {
     'https://twiiit.com/jack/status/20\nhttps://twiiit.com/a/status/1'
   )
 })
+
+test('appends the funding footer as a gfm footnote', () => {
+  const links = findStatusLinks('https://x.com/jack/status/20')
+
+  assert.equal(
+    buildComment(links, 'https://twiiit.com', { footer: 'funded by zaps' }),
+    'https://twiiit.com/jack/status/20 [^1]\n\n[^1]: funded by zaps'
+  )
+})
+
+test('leaves the comment alone when there is no footer', () => {
+  const links = findStatusLinks('https://x.com/jack/status/20')
+  const expected = 'https://twiiit.com/jack/status/20'
+
+  assert.equal(buildComment(links, 'https://twiiit.com'), expected)
+  assert.equal(buildComment(links, 'https://twiiit.com', { footer: '   ' }), expected)
+  assert.equal(buildComment(links, 'https://twiiit.com', { footer: null }), expected)
+})

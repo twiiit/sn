@@ -44,7 +44,15 @@ export function toRedirectUrl (link, redirectorBaseUrl) {
 
 /**
  * The comment body the bot posts: one rewritten link per line.
+ *
+ * An optional footer is appended as a GFM footnote (`[^1]` + a definition),
+ * which stacker.news renders as a small superscript marker plus a muted line at
+ * the bottom - so the links stay the only thing the comment is about.
  */
-export function buildComment (links, redirectorBaseUrl) {
-  return links.map(link => toRedirectUrl(link, redirectorBaseUrl)).join('\n')
+export function buildComment (links, redirectorBaseUrl, { footer } = {}) {
+  const body = links.map(link => toRedirectUrl(link, redirectorBaseUrl)).join('\n')
+  const text = typeof footer === 'string' ? footer.trim() : ''
+  if (text === '') return body
+
+  return `${body} [^1]\n\n[^1]: ${text}`
 }

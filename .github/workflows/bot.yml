@@ -41,4 +41,5 @@ jobs:
         env:
           SN_NSEC: ${{ secrets.SN_NSEC }}
           SN_REDIRECTOR: ${{ vars.SN_REDIRECTOR }}
+          SN_LOW_BALANCE_SATS: ${{ vars.SN_LOW_BALANCE_SATS }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}

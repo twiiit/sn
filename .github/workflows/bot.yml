@@ -1,0 +1,44 @@
+name: sn-twiiit bot
+
+on:
+  schedule:
+    # GitHub runs this on the closest available runner; delays of a few minutes
+    # are normal. The bot is idempotent, so late runs are harmless.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only log what would be commented'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Never run two scans at the same time.
+concurrency:
+  group: sn-twiiit-bot
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Scan stacker.news and reply with nitter links
+        run: node src/index.js
+        env:
+          SN_NSEC: ${{ secrets.SN_NSEC }}
+          SN_REDIRECTOR: ${{ vars.SN_REDIRECTOR }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}

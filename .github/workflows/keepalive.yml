@@ -1,0 +1,44 @@
+name: keepalive
+
+# GitHub disables scheduled workflows in public repositories after 60 days
+# without repository activity, and a scheduled run is not documented as counting
+# as activity on its own - so the 5 minute bot cron would eventually die.
+# A commit pushed to the default branch is the reliable kind of activity.
+# Twice a month, so two missed runs still stay under the 60 day limit.
+#
+# If this workflow is ever disabled (github emails a warning before it happens),
+# turn it back on with: gh workflow enable keepalive
+
+on:
+  schedule:
+    - cron: '17 3 1,15 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the heartbeat
+        run: date -u +'%Y-%m-%dT%H:%M:%SZ' > .github/keepalive
+
+      - name: Commit and push
+        run: |
+          git config user.name 'twiiit'
+          git config user.email '347903283+twiiit@users.noreply.github.com'
+          git add .github/keepalive
+          if git diff --staged --quiet; then
+            echo 'heartbeat unchanged, nothing to commit'
+            exit 0
+          fi
+          git commit -m "Record a heartbeat so GitHub keeps the scheduled bot enabled"
+          git push

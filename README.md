@@ -135,5 +135,10 @@ npm test
   Stacker News also supports `<sub>…</sub>`, which is a drop-in alternative in
   `buildComment` if the footnote looks bad on nostr.
 - GitHub disables scheduled workflows in public repositories after 60 days
-  without repository activity. If the bot goes quiet, re-enable the workflow in
-  the Actions tab (or push any commit, e.g. a touch to this README).
+  without repository activity, and a scheduled run is not documented as counting
+  as activity by itself — so a bot that only runs on cron can quietly die. The
+  [keepalive](.github/workflows/keepalive.yml) workflow commits a timestamp to
+  `.github/keepalive` on the 1st and 15th of every month, which is real activity
+  on the default branch and keeps both workflows enabled. If it ever misses more
+  than that, GitHub emails a warning and disables them: re-enable with
+  `gh workflow enable keepalive` and `gh workflow enable 'sn-twiiit bot'`.

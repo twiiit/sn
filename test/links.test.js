@@ -52,14 +52,37 @@ test('builds redirector urls and the comment body', () => {
   )
 })
 
-test('builds the note body with a pointer to the post', () => {
+test('builds the note body with the post title and a pointer to the post', () => {
   const links = findStatusLinks('https://x.com/jack/status/20')
 
   assert.equal(
-    buildNoteContent(links, 'https://twiiit.com', { snItemUrl: 'https://stacker.news/items/42' }),
-    'https://twiiit.com/jack/status/20\n\nhttps://stacker.news/items/42'
+    buildNoteContent(links, 'https://twiiit.com', {
+      snItemUrl: 'https://stacker.news/items/42',
+      title: 'Jack Dorsey on the first tweet'
+    }),
+    'https://twiiit.com/jack/status/20\n\nJack Dorsey on the first tweet\n\nhttps://stacker.news/items/42'
   )
   assert.equal(buildNoteContent(links, 'https://twiiit.com'), 'https://twiiit.com/jack/status/20')
+})
+
+test('keeps the note readable when the title is missing or messy', () => {
+  const links = findStatusLinks('https://x.com/jack/status/20')
+  const snItemUrl = 'https://stacker.news/items/42'
+
+  // a post without a title (discussion-less import) must not leave a blank block
+  assert.equal(
+    buildNoteContent(links, 'https://twiiit.com', { snItemUrl, title: '   ' }),
+    'https://twiiit.com/jack/status/20\n\nhttps://stacker.news/items/42'
+  )
+  assert.equal(
+    buildNoteContent(links, 'https://twiiit.com', { snItemUrl, title: null }),
+    'https://twiiit.com/jack/status/20\n\nhttps://stacker.news/items/42'
+  )
+  // newlines in a title would break the one-block-per-idea layout
+  assert.equal(
+    buildNoteContent(links, 'https://twiiit.com', { snItemUrl, title: ' line one\n  line   two ' }),
+    'https://twiiit.com/jack/status/20\n\nline one line two\n\nhttps://stacker.news/items/42'
+  )
 })
 
 test('appends the funding footer as a gfm footnote', () => {

@@ -58,11 +58,19 @@ export function buildComment (links, redirectorBaseUrl, { footer } = {}) {
 }
 
 /**
- * The body of the nostr note: the same rewritten links, plus a pointer to the
- * stacker.news post so note readers can find the discussion. No markdown, since
- * relays hand the content to clients as plain text.
+ * The body of the nostr note: the same rewritten links, the title of the
+ * stacker.news post, and a pointer to that post so note readers can find the
+ * discussion. No markdown, since relays hand the content to clients as plain
+ * text, and the title is flattened to one line because a multi-line title would
+ * break the one-block-per-idea layout.
  */
-export function buildNoteContent (links, redirectorBaseUrl, { snItemUrl } = {}) {
+export function buildNoteContent (links, redirectorBaseUrl, { snItemUrl, title } = {}) {
   const body = links.map(link => toRedirectUrl(link, redirectorBaseUrl)).join('\n')
-  return snItemUrl ? `${body}\n\n${snItemUrl}` : body
+  const headline = typeof title === 'string' ? title.replace(/\s+/g, ' ').trim() : ''
+
+  const parts = [body]
+  if (headline) parts.push(headline)
+  if (snItemUrl) parts.push(snItemUrl)
+
+  return parts.join('\n\n')
 }

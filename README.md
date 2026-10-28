@@ -71,13 +71,18 @@ GitHub actually runs it):
 Stacker News does not crosspost comments (its crossposter is wired to the post
 form and the manual share button), so the bot publishes its own `kind 1` notes
 with the same `nsec` it logs in with — no extra secret. A note contains the
-rewritten links plus a link to the stacker.news post:
+rewritten links, the title of the post, and a link to it:
 
 ```
 https://twiiit.com/jack/status/20
 
+Warriors win ✌️
+
 https://stacker.news/items/1603795
 ```
+
+The title is flattened onto one line and left out when a post has none, so the
+note always keeps its link / headline / discussion shape.
 
 Relays are [the ones stacker.news crossposts to](https://github.com/stackernews/stacker.news/blob/master/lib/nostr.js)
 (`DEFAULT_RELAYS` in [src/nostr.js](src/nostr.js)), so notes land where SN

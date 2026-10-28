@@ -13,6 +13,11 @@ const DEFAULT_BASE_URL = 'https://stacker.news'
 const USER_AGENT = 'sn-twiiit-bot (+https://github.com/twiiit/sn)'
 const REQUEST_TIMEOUT_MS = 30_000
 
+// stacker.news validates `limit` as an int scalar with a maximum of 100 and
+// rejects anything above it ("code=maximum"), so looking further back needs
+// cursor pages instead of one bigger request.
+export const SN_MAX_PAGE_SIZE = 100
+
 export class SnApiError extends Error {
   constructor (message, { status, errors } = {}) {
     super(message)
@@ -203,11 +208,18 @@ export class StackerNewsClient {
     }
   }
 
-  /** Recent items, newest first. */
-  async recentItems ({ limit = 100 } = {}) {
+  /**
+   * One page of the newest items, newest first, plus the cursor that walks back
+   * to the next page.
+   */
+  async recentItemsPage ({ limit = SN_MAX_PAGE_SIZE, cursor = null } = {}) {
+    const requested = Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : SN_MAX_PAGE_SIZE
+    const pageSize = Math.min(Math.max(requested, 1), SN_MAX_PAGE_SIZE)
+
     const { items } = await this.gql(`
-      query ($limit: Limit!) {
-        items(sort: "new", type: "all", limit: $limit) {
+      query ($limit: Limit!, $cursor: String) {
+        items(sort: "new", type: "all", limit: $limit, cursor: $cursor) {
+          cursor
           items {
             id
             parentId
@@ -221,9 +233,76 @@ export class StackerNewsClient {
           }
         }
       }
-    `, { limit })
+    `, { limit: pageSize, cursor: cursor ?? null })
 
-    return items?.items ?? []
+    return { items: items?.items ?? [], cursor: items?.cursor ?? null }
+  }
+
+  /** Recent items, newest first. */
+  async recentItems ({ limit = SN_MAX_PAGE_SIZE } = {}) {
+    const { items } = await this.recentItemsPage({ limit })
+    return items
+  }
+
+  /**
+   * Items newer than `since`, newest first.
+   *
+   * One page only covers as many posts as stacker.news received in that time, so
+   * the window is filled by paging backwards until the last page reaches `since`
+   * (or the feed ends). `maxPages` keeps a runaway loop impossible.
+   *
+   * @returns {Promise<{ items: object[], pages: number, truncated: boolean }>}
+   */
+  async recentItemsSince ({ since, pageSize = SN_MAX_PAGE_SIZE, maxPages = 5, log = () => {} }) {
+    const sinceMs = new Date(since).getTime()
+    if (!Number.isFinite(sinceMs)) throw new Error('recentItemsSince needs a valid `since` date')
+
+    const requested = Number.isFinite(Number(pageSize)) ? Math.trunc(Number(pageSize)) : SN_MAX_PAGE_SIZE
+    const effectivePageSize = Math.min(Math.max(requested, 1), SN_MAX_PAGE_SIZE)
+    const pageLimit = Math.max(1, Math.trunc(Number(maxPages)) || 1)
+
+    const collected = []
+    const seen = new Set()
+    let cursor = null
+    let pages = 0
+    let reason = 'max-pages'
+
+    while (pages < pageLimit) {
+      const page = await this.recentItemsPage({ limit: effectivePageSize, cursor })
+      pages++
+
+      for (const item of page.items) {
+        if (seen.has(item.id)) continue
+        seen.add(item.id)
+        collected.push(item)
+      }
+
+      const oldest = page.items.reduce((min, item) => {
+        const time = Date.parse(item.createdAt)
+        return Number.isFinite(time) && (min == null || time < min) ? time : min
+      }, null)
+
+      if (page.items.length > 0) {
+        log(`page ${pages}: ${page.items.length} item(s), oldest ${page.items.at(-1).createdAt}`)
+      }
+
+      if (page.items.length === 0) {
+        reason = 'end-of-feed'
+        break
+      }
+      if (oldest != null && oldest <= sinceMs) {
+        reason = 'reached-since'
+        break
+      }
+      if (page.items.length < effectivePageSize || !page.cursor) {
+        reason = 'end-of-feed'
+        break
+      }
+
+      cursor = page.cursor
+    }
+
+    return { items: collected, pages, truncated: reason === 'max-pages' }
   }
 
   /**

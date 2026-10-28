@@ -5,7 +5,7 @@
 import { appendFile } from 'node:fs/promises'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-import { StackerNewsClient, nsecToSecretKey } from './stackernews.js'
+import { StackerNewsClient, nsecToSecretKey, SN_MAX_PAGE_SIZE } from './stackernews.js'
 import { selectRedirector } from './redirectors.js'
 import { findStatusLinks, buildComment, buildNoteContent } from './links.js'
 import { buildNote, publishNote, DEFAULT_RELAYS } from './nostr.js'
@@ -48,8 +48,12 @@ function readConfig () {
     botName: (process.env.SN_BOT_NAME || 'twiiit').trim(),
     preferredRedirector: process.env.SN_REDIRECTOR,
     dryRun: envBool('DRY_RUN'),
-    maxItems: envInt('MAX_ITEMS', 100),
-    maxAgeMinutes: envInt('ITEM_MAX_AGE_MINUTES', 60),
+    maxItems: envInt('MAX_ITEMS', SN_MAX_PAGE_SIZE),
+    maxPages: envInt('MAX_PAGES', 5),
+    // GitHub's scheduler is best effort: a */5 cron can run 40+ minutes late, or
+    // a run can be dropped entirely. A window wider than that keeps posts from
+    // ageing out before a run sees them; dedupe makes the overlap harmless.
+    maxAgeMinutes: envInt('ITEM_MAX_AGE_MINUTES', 180),
     maxCommentsPerRun: envInt('MAX_COMMENTS_PER_RUN', 20),
     postDelayMs: envInt('POST_DELAY_MS', 5000),
     lowBalanceSats: envInt('SN_LOW_BALANCE_SATS', 100),
@@ -122,8 +126,21 @@ async function main () {
     (footer ? ` (below ${config.lowBalanceSats}, replies will invite zaps)` : ''))
 
   const maxAgeMs = config.maxAgeMinutes * 60_000
-  const items = await sn.recentItems({ limit: config.maxItems })
-  log(`fetched ${items.length} recent items`)
+  const since = new Date(Date.now() - maxAgeMs)
+  if (config.maxItems > SN_MAX_PAGE_SIZE) {
+    log(`MAX_ITEMS is capped at ${SN_MAX_PAGE_SIZE} per page by stacker.news, extra pages are used instead`)
+  }
+
+  const { items, pages, truncated } = await sn.recentItemsSince({
+    since,
+    pageSize: config.maxItems,
+    maxPages: config.maxPages,
+    log
+  })
+  log(`fetched ${items.length} items from the last ${config.maxAgeMinutes} min (${pages} page(s))`)
+  if (truncated) {
+    log(`warning: hit MAX_PAGES (${config.maxPages}) before reaching ${config.maxAgeMinutes} min back, older posts in the window were not scanned`)
+  }
 
   const candidates = items
     .filter(item => isCandidate(item, { now: Date.now(), maxAgeMs, botName: config.botName }))
@@ -225,7 +242,7 @@ async function main () {
     '',
     `- redirector: \`${redirector.host}\`${redirector.attempts.length > 1 ? ` (after ${redirector.attempts.length - 1} unavailable)` : ''}`,
     `- balance: ${wallet.sats} sats + ${wallet.credits} cowboy credits${footer ? ' (low, zap footer added)' : ''}`,
-    `- scanned: ${stats.scanned} recent posts, ${stats.withLinks} with x.com links`,
+    `- scanned: ${stats.scanned} posts from the last ${config.maxAgeMinutes} min (${pages} page(s)${truncated ? ', truncated by MAX_PAGES' : ''}), ${stats.withLinks} with x.com links`,
     `- commented: ${stats.commented}${config.dryRun ? ' (dry run)' : ''}`,
     `- already handled: ${stats.alreadyCommented}`,
     `- failed: ${stats.failed}`,

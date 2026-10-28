@@ -221,10 +221,19 @@ async function main () {
 
   const details = await fetch(`${api}/jobs/${jobId}`, { headers }).then(r => (r.ok ? r.json() : null)).catch(() => null)
   const next = details?.jobDetails?.nextExecution
-  const confirmed = details?.jobDetails?.schedule?.minutes?.join(',')
+  const stored = details?.jobDetails?.schedule?.minutes
 
   console.log(`${existing ? 'updated' : 'created'} job ${jobId}: ${job.url}`)
-  console.log(`every ${config.intervalMinutes} min (minutes ${confirmed ?? job.schedule.minutes.join(',')}), POST ${job.extendedData.body}`)
+  console.log(`every ${config.intervalMinutes} min (minutes ${stored?.join(',') ?? job.schedule.minutes.join(',')}), POST ${job.extendedData.body}`)
+
+  // the job can also be edited in the cron-job.org console, and "every minute"
+  // there is a single -1 - five times the runs intended, so check what stuck
+  if (Array.isArray(stored) && stored.join(',') !== job.schedule.minutes.join(',')) {
+    return fail(`cron-job.org stored minutes ${stored.join(',')} instead of ${job.schedule.minutes.join(',')} - the job would run at a different cadence than intended`)
+  }
+  if (!Array.isArray(stored)) {
+    console.log('warning: could not re-read the job to confirm its schedule')
+  }
   if (next) console.log(`next execution: ${new Date(next * 1000).toISOString()}`)
   console.log(`tokens: cron-job.org ${mask(config.apiKey)}, github ${mask(config.githubToken)}`)
   console.log(process.env.GITHUB_ACTIONS

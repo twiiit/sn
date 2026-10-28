@@ -1,24 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildScheduleRequest } from '../scripts/schedule-cron.mjs'
+import { buildJob, dispatchMinutes, jobTitle } from '../scripts/schedule-cron.mjs'
 
-const base = { qstashToken: 'qstash-secret', githubToken: 'github-secret' }
+const githubToken = 'github-secret'
 
-test('dispatch schedule points at the workflow dispatch endpoint', () => {
-  const request = buildScheduleRequest(base)
+test('job posts to the workflow dispatch endpoint every five minutes', () => {
+  const job = buildJob({ githubToken })
 
-  assert.equal(
-    request.url,
-    'https://qstash.upstash.io/v2/schedules/https://api.github.com/repos/twiiit/sn/actions/workflows/bot.yml/dispatches'
-  )
-  assert.equal(request.method, 'POST')
-  assert.equal(request.headers['upstash-cron'], '*/5 * * * *')
-  assert.equal(request.headers['upstash-schedule-id'], 'sn-twiiit-dispatch')
+  assert.equal(job.url, 'https://api.github.com/repos/twiiit/sn/actions/workflows/bot.yml/dispatches')
+  assert.equal(job.enabled, true)
+  assert.equal(job.requestMethod, 1)
+  assert.deepEqual(job.schedule.minutes, [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55])
+  assert.deepEqual(job.schedule.hours, [-1])
+  assert.equal(job.schedule.timezone, 'UTC')
 })
 
-test('dispatches a real run on main, never a dry run', () => {
-  const body = JSON.parse(buildScheduleRequest(base).body)
+test('dispatch body asks for a real run on main', () => {
+  const body = JSON.parse(buildJob({ githubToken }).extendedData.body)
 
   assert.equal(body.ref, 'main')
   // string on purpose: the REST API takes string inputs, and the workflow's
@@ -26,26 +25,50 @@ test('dispatches a real run on main, never a dry run', () => {
   assert.equal(body.inputs.dry_run, 'false')
 })
 
-test('forwards the GitHub token without reusing the QStash credential', () => {
-  const { headers } = buildScheduleRequest(base)
+test('sends the GitHub token as a request header, not in the URL or body', () => {
+  const job = buildJob({ githubToken })
 
-  assert.equal(headers.authorization, 'Bearer qstash-secret')
-  assert.equal(headers['upstash-forward-authorization'], 'Bearer github-secret')
-  assert.equal(headers['upstash-forward-accept'], 'application/vnd.github+json')
-  // the GitHub token must never travel as a QStash header
-  assert.ok(!Object.entries(headers).some(([name, value]) => name === 'authorization' && String(value).includes('github-secret')))
+  assert.equal(job.extendedData.headers.Authorization, 'Bearer github-secret')
+  assert.equal(job.extendedData.headers.Accept, 'application/vnd.github+json')
+  assert.ok(!job.url.includes('github-secret'))
+  assert.ok(!job.extendedData.body.includes('github-secret'))
 })
 
-test('honours overrides for repo, ref and cron', () => {
-  const request = buildScheduleRequest({ ...base, repo: 'someone/else', workflow: 'other.yml', ref: 'release', cron: '*/10 * * * *' })
+test('notifies when the job starts failing or gets disabled', () => {
+  const job = buildJob({ githubToken })
 
-  assert.match(request.url, /repos\/someone\/else\/actions\/workflows\/other\.yml\/dispatches$/)
-  assert.equal(request.headers['upstash-cron'], '*/10 * * * *')
-  assert.equal(JSON.parse(request.body).ref, 'release')
+  // cron-job.org disables a job after 25 consecutive failures, which is what an
+  // expired PAT looks like, so the first few failures should already be mailed
+  assert.equal(job.notification.onFailure, true)
+  assert.equal(job.notification.onFailureCount, 3)
+  assert.equal(job.notification.onDisable, true)
 })
 
-test('refuses to build a request without both credentials', () => {
-  assert.throws(() => buildScheduleRequest({ githubToken: 'github-secret' }), /QSTASH_TOKEN/)
-  assert.throws(() => buildScheduleRequest({ qstashToken: 'qstash-secret' }), /GITHUB_DISPATCH_TOKEN/)
-  assert.throws(() => buildScheduleRequest({ ...base, repo: 'nope' }), /owner\/name/)
+test('converts an interval into the minutes cron-job.org expects', () => {
+  assert.deepEqual(dispatchMinutes(5), [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55])
+  assert.deepEqual(dispatchMinutes(15), [0, 15, 30, 45])
+  assert.deepEqual(dispatchMinutes(1).length, 60)
+  // intervals that do not divide an hour would drift, so they are refused
+  assert.throws(() => dispatchMinutes(7), /divide 60 evenly/)
+  assert.throws(() => dispatchMinutes(0), /between 1 and 60/)
+  assert.throws(() => dispatchMinutes(90), /between 1 and 60/)
+})
+
+test('names the job after the repo so re-runs find it again', () => {
+  assert.equal(buildJob({ githubToken }).title, jobTitle('twiiit/sn'))
+  assert.match(buildJob({ githubToken }).title, /twiiit\/sn/)
+  assert.equal(buildJob({ githubToken, title: 'custom' }).title, 'custom')
+})
+
+test('honours overrides for repo, workflow and ref', () => {
+  const job = buildJob({ githubToken, repo: 'someone/else', workflow: 'other.yml', ref: 'release', intervalMinutes: 15 })
+
+  assert.equal(job.url, 'https://api.github.com/repos/someone/else/actions/workflows/other.yml/dispatches')
+  assert.equal(JSON.parse(job.extendedData.body).ref, 'release')
+  assert.deepEqual(job.schedule.minutes, [0, 15, 30, 45])
+})
+
+test('refuses to build a job without a token or a usable repo', () => {
+  assert.throws(() => buildJob({}), /GITHUB_DISPATCH_TOKEN/)
+  assert.throws(() => buildJob({ githubToken, repo: 'nope' }), /owner\/name/)
 })

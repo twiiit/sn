@@ -169,47 +169,51 @@ summary instead of silently scanning less than it claims.
 A wide window absorbs a slow scheduler; it cannot fix it. If you want the
 intended 5 minute cadence, drive the workflow from outside GitHub.
 
-[Upstash QStash](https://upstash.com/docs/qstash/features/schedules) is a hosted
-cron for HTTP endpoints: it POSTs the workflow dispatch API on a schedule, which
-starts a real run. It needs no server here, the free tier is 1,000 messages/day
-against the 288 a 5 minute cadence uses, and every delivery is logged with
-retries in the Upstash console. The workflow's own cron stays in place as a
-fallback, and the `concurrency` group means two triggers can only queue a run,
-never post twice.
+[cron-job.org](https://cron-job.org) is a free cron for arbitrary URLs: it POSTs
+the workflow dispatch API every 5 minutes, which starts a real run. It needs no
+server here, allows 1 minute intervals with no job limit, keeps the last 50
+executions with their HTTP status, and emails you when a job fails or is disabled
+— which is exactly how an expired token should surface. The workflow's own cron
+stays in place as a fallback, and the `concurrency` group means two triggers can
+only queue a run, never post twice.
 
 Nothing secret goes into the repository. Both credentials live in your local
-`.env`; only the GitHub token is handed to QStash, as a forwarded header.
+`.env`; the GitHub token is only stored in the cron-job.org job as a request
+header.
 
 1. Create a **fine grained personal access token** for your account, limited to
    this repository with **Actions: read and write** (dispatching needs nothing
-   else). Set an expiry and renew it when it lapses — when it expires, dispatches
-   start failing with 401 and the schedule stops doing anything.
-2. Create a [QStash](https://console.upstash.com/qstash) account and copy the
-   token from the console.
+   else). Set an expiry and renew it when it lapses — when it expires the job
+   starts failing with 401, and cron-job.org disables it after 25 consecutive
+   failures, emailing you first.
+2. Create an account at [cron-job.org](https://cron-job.org) and copy the API key
+   from **Console → Settings**.
 3. Put both in `.env`:
 
    ```sh
    GITHUB_DISPATCH_TOKEN=github_pat_...
-   QSTASH_TOKEN=...
+   CRONJOB_API_KEY=...
    ```
 
-4. Register the schedule, then check it:
+4. Register the job, then check it:
 
    ```sh
-   npm run schedule              # create or update the */5 schedule
-   npm run schedule -- --check   # validate the GitHub token and workflow only
-   npm run schedule -- --show    # what is currently registered
-   npm run schedule -- --delete  # stop dispatching (the cron fallback stays)
+   npm run schedule                # create (or update) the 5 minute job
+   npm run schedule -- --check     # validate the GitHub token and workflow only
+   npm run schedule -- --show      # what is currently registered
+   npm run schedule -- --history   # last executions, with HTTP status
+   npm run schedule -- --delete    # stop dispatching (the cron fallback stays)
    ```
 
-   `npm run schedule` verifies the token against the repository before it
-   registers anything, and re-running it overwrites the same schedule instead of
-   adding a second one.
+   `npm run schedule` validates the token against the repository before it
+   registers anything, finds its job by title and updates it in place, so
+   re-running never stacks up duplicates. `DISPATCH_INTERVAL_MINUTES` changes the
+   cadence (it must divide 60 evenly).
 
 Verify it end to end with `gh run list --event workflow_dispatch`: runs should
-appear about every 5 minutes, each lasting well under a minute. If they stop, the
-usual causes are an expired PAT (401 in the QStash logs) or the workflow being
-disabled (GitHub returns 422 for a disabled workflow).
+appear about every 5 minutes, each lasting well under a minute, and
+`--history` should show `OK / HTTP 204` — the status GitHub returns for a
+successful dispatch.
 
 ## Local development
 

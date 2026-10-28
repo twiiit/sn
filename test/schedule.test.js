@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildJob, dispatchMinutes, jobTitle } from '../scripts/schedule-cron.mjs'
+import { buildJob, describeMinutes, dispatchMinutes, jobTitle, normalizeMinutes, sameSchedule } from '../scripts/schedule-cron.mjs'
 
 const githubToken = 'github-secret'
 
@@ -52,6 +52,30 @@ test('converts an interval into the minutes cron-job.org expects', () => {
   assert.throws(() => dispatchMinutes(7), /divide 60 evenly/)
   assert.throws(() => dispatchMinutes(0), /between 1 and 60/)
   assert.throws(() => dispatchMinutes(90), /between 1 and 60/)
+})
+
+test('treats cron-job.org\'s -1 and all sixty minutes as the same schedule', () => {
+  // the console stores "every minute" as a single -1, which a naive compare
+  // against 0..59 would report as drift
+  const allMinutes = dispatchMinutes(1)
+
+  assert.deepEqual(normalizeMinutes(allMinutes), [-1])
+  assert.deepEqual(normalizeMinutes([-1]), [-1])
+  assert.equal(sameSchedule([-1], allMinutes), true)
+  assert.equal(sameSchedule(allMinutes, [-1]), true)
+  assert.equal(describeMinutes([-1]), 'every minute')
+})
+
+test('still distinguishes a real cadence change', () => {
+  const fiveMinutes = dispatchMinutes(5)
+
+  // what happens if someone sets the job to every minute while we want five
+  assert.equal(sameSchedule([-1], fiveMinutes), false)
+  assert.equal(sameSchedule(fiveMinutes, dispatchMinutes(15)), false)
+  assert.equal(sameSchedule(fiveMinutes, fiveMinutes), true)
+  assert.equal(sameSchedule(null, fiveMinutes), false)
+  assert.equal(describeMinutes(fiveMinutes), 'minutes 0,5,10,15,20,25,30,35,40,45,50,55')
+  assert.equal(describeMinutes(null), 'unknown')
 })
 
 test('names the job after the repo so re-runs find it again', () => {

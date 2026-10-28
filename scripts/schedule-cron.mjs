@@ -49,6 +49,33 @@ export function jobTitle (repo) {
 }
 
 /**
+ * cron-job.org stores "every minute" as a single -1 rather than 0..59, so
+ * compare schedules through this instead of the raw arrays.
+ */
+export function normalizeMinutes (minutes) {
+  if (!Array.isArray(minutes) || minutes.length === 0) return null
+
+  const unique = [...new Set(minutes.map(Number))].sort((a, b) => a - b)
+  if (unique.includes(-1) || unique.length === 60) return [-1]
+  return unique
+}
+
+export function sameSchedule (stored, intended) {
+  const a = normalizeMinutes(stored)
+  const b = normalizeMinutes(intended)
+  if (!a || !b) return false
+  return a.join(',') === b.join(',')
+}
+
+export function describeMinutes (minutes) {
+  const normalized = normalizeMinutes(minutes)
+  if (!normalized) return 'unknown'
+  return normalized.length === 1 && normalized[0] === -1
+    ? 'every minute'
+    : `minutes ${normalized.join(',')}`
+}
+
+/**
  * The cron-job.org job that dispatches this repo's workflow. Pure so the shape
  * can be tested without touching either service.
  */
@@ -224,12 +251,12 @@ async function main () {
   const stored = details?.jobDetails?.schedule?.minutes
 
   console.log(`${existing ? 'updated' : 'created'} job ${jobId}: ${job.url}`)
-  console.log(`every ${config.intervalMinutes} min (minutes ${stored?.join(',') ?? job.schedule.minutes.join(',')}), POST ${job.extendedData.body}`)
+  console.log(`cadence: ${describeMinutes(stored ?? job.schedule.minutes)} (POST ${job.extendedData.body})`)
 
-  // the job can also be edited in the cron-job.org console, and "every minute"
-  // there is a single -1 - five times the runs intended, so check what stuck
-  if (Array.isArray(stored) && stored.join(',') !== job.schedule.minutes.join(',')) {
-    return fail(`cron-job.org stored minutes ${stored.join(',')} instead of ${job.schedule.minutes.join(',')} - the job would run at a different cadence than intended`)
+  // the job can also be edited in the cron-job.org console, so check that what
+  // was stored is what was asked for instead of assuming the write stuck
+  if (Array.isArray(stored) && !sameSchedule(stored, job.schedule.minutes)) {
+    return fail(`cron-job.org stored ${describeMinutes(stored)} instead of ${describeMinutes(job.schedule.minutes)} - the job would run at a different cadence than intended`)
   }
   if (!Array.isArray(stored)) {
     console.log('warning: could not re-read the job to confirm its schedule')

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { findStatusLinks, toRedirectUrl, buildComment, buildNoteContent } from '../src/links.js'
+import { findStatusLinks, toRedirectUrl, buildComment, buildNoteContent, withReferral } from '../src/links.js'
 
 test('finds x.com and twitter.com status links', () => {
   const links = findStatusLinks(
@@ -82,6 +82,35 @@ test('keeps the note readable when the title is missing or messy', () => {
   assert.equal(
     buildNoteContent(links, 'https://twiiit.com', { snItemUrl, title: ' line one\n  line   two ' }),
     'https://twiiit.com/jack/status/20\n\nline one line two\n\nhttps://stacker.news/items/42'
+  )
+})
+
+test('credits the bot with a referral suffix on the linked post', () => {
+  // stacker.news builds its own share links the same way: `${ipath}/r/${me.name}`
+  assert.equal(
+    withReferral('https://stacker.news/items/1603307', 'twiiit'),
+    'https://stacker.news/items/1603307/r/twiiit'
+  )
+  assert.equal(
+    withReferral('https://stacker.news/items/1603307/', 'twiiit'),
+    'https://stacker.news/items/1603307/r/twiiit'
+  )
+  // already credited, or nothing to credit with
+  assert.equal(
+    withReferral('https://stacker.news/items/1603307/r/twiiit', 'twiiit'),
+    'https://stacker.news/items/1603307/r/twiiit'
+  )
+  assert.equal(withReferral('https://stacker.news/items/1603307', ''), 'https://stacker.news/items/1603307')
+  assert.equal(withReferral('https://stacker.news/items/1603307', null), 'https://stacker.news/items/1603307')
+
+  const links = findStatusLinks('https://x.com/jack/status/20')
+  assert.equal(
+    buildNoteContent(links, 'https://twiiit.com', {
+      snItemUrl: 'https://stacker.news/items/1603307',
+      title: 'Warriors win ✌️',
+      referral: 'twiiit'
+    }),
+    'https://twiiit.com/jack/status/20\n\nWarriors win ✌️\n\nhttps://stacker.news/items/1603307/r/twiiit'
   )
 })
 

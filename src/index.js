@@ -184,7 +184,7 @@ async function main () {
         stats.commented++
         log(`[dry run] would comment on item ${item.id}:\n${text}`)
         if (config.publishNotes) {
-          log(`[dry run] would publish note:\n${buildNoteContent(links, redirector.baseUrl, { snItemUrl: `${snSiteUrl}/items/${item.id}`, title: item.title })}`)
+          log(`[dry run] would publish note:\n${buildNoteContent(links, redirector.baseUrl, { snItemUrl: `${snSiteUrl}/items/${item.id}`, title: item.title, referral: config.botName })}`)
         }
         continue
       }
@@ -202,7 +202,7 @@ async function main () {
           try {
             const event = buildNote({
               secretKey: noteKey,
-              content: buildNoteContent(links, redirector.baseUrl, { snItemUrl: `${snSiteUrl}/items/${item.id}`, title: item.title })
+              content: buildNoteContent(links, redirector.baseUrl, { snItemUrl: `${snSiteUrl}/items/${item.id}`, title: item.title, referral: config.botName })
             })
             const result = await publishNote({ event, relays: config.relays })
 

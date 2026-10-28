@@ -80,11 +80,14 @@ https://twiiit.com/jack/status/20
 
 Warriors win ✌️
 
-https://stacker.news/items/1603795
+https://stacker.news/items/1603795/r/twiiit
 ```
 
 The title is flattened onto one line and left out when a post has none, so the
 note always keeps its link / headline / discussion shape.
+
+The post link carries stacker.news' referral suffix (`/r/twiiit`), the same one
+its own share button builds, so readers arriving from nostr credit the bot.
 
 Relays are [the ones stacker.news crossposts to](https://github.com/stackernews/stacker.news/blob/master/lib/nostr.js)
 (`DEFAULT_RELAYS` in [src/nostr.js](src/nostr.js)), so notes land where SN

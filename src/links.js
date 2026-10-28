@@ -58,19 +58,35 @@ export function buildComment (links, redirectorBaseUrl, { footer } = {}) {
 }
 
 /**
+ * Adds stacker.news' referral suffix to an item URL, the same `/r/<name>` that
+ * its own share button builds (components/share.js: `${ipath}/r/${me.name}`),
+ * so visits from the note credit the bot account.
+ */
+export function withReferral (url, referrer) {
+  const name = typeof referrer === 'string' ? referrer.trim() : ''
+  if (!name || typeof url !== 'string' || url === '') return url
+
+  const base = url.replace(/\/+$/, '')
+  // never double up if the URL already carries a referral
+  if (/\/r\/[^/]+$/.test(base)) return base
+
+  return `${base}/r/${encodeURIComponent(name)}`
+}
+
+/**
  * The body of the nostr note: the same rewritten links, the title of the
  * stacker.news post, and a pointer to that post so note readers can find the
  * discussion. No markdown, since relays hand the content to clients as plain
  * text, and the title is flattened to one line because a multi-line title would
  * break the one-block-per-idea layout.
  */
-export function buildNoteContent (links, redirectorBaseUrl, { snItemUrl, title } = {}) {
+export function buildNoteContent (links, redirectorBaseUrl, { snItemUrl, title, referral } = {}) {
   const body = links.map(link => toRedirectUrl(link, redirectorBaseUrl)).join('\n')
   const headline = typeof title === 'string' ? title.replace(/\s+/g, ' ').trim() : ''
 
   const parts = [body]
   if (headline) parts.push(headline)
-  if (snItemUrl) parts.push(snItemUrl)
+  if (snItemUrl) parts.push(withReferral(snItemUrl, referral))
 
   return parts.join('\n\n')
 }

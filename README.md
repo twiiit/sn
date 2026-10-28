@@ -73,8 +73,11 @@ the bottom:
 ```
 https://twiiit.com/jack/status/20 [^1]
 
-[^1]: bot · funded by zaps — zap this comment or send sats to twiiit@rizful.com
+[^1]: bot · funded by zaps — zap this comment or send sats to `twiiit@rizful.com`
 ```
+
+The address is wrapped in backticks because stacker.news autolinks bare email
+addresses and renders the visible text as `mailto:twiiit@rizful.com`.
 
 The footnote text is `SN_FUNDING_FOOTER`, so the address can be changed without
 touching the bot. Once the balance is back above the threshold, the footnote

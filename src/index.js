@@ -14,7 +14,10 @@ const log = (...args) => console.log(new Date().toISOString(), ...args)
 // stacker.news pays for each comment from sats + cowboy credits (~1 sat), and
 // only writes it unpaid when both run out. This footnote only shows up when the
 // balance is low, so it never nags while the bot is funded.
-const DEFAULT_FUNDING_FOOTER = 'bot · funded by zaps — zap this comment or send sats to twiiit@rizful.com'
+//
+// The address is in backticks on purpose: stacker.news autolinks bare emails and
+// ends up rendering the visible text as "mailto:twiiit@rizful.com".
+const DEFAULT_FUNDING_FOOTER = 'bot · funded by zaps — zap this comment or send sats to `twiiit@rizful.com`'
 
 function envInt (name, fallback) {
   const raw = process.env[name]

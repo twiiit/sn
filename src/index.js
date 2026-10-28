@@ -5,15 +5,15 @@
 import { appendFile } from 'node:fs/promises'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-import { StackerNewsClient, nsecToSecretKey, SN_MAX_PAGE_SIZE } from './stackernews.js'
+import { StackerNewsClient, nsecToSecretKey, spendableSats, satsWithoutCredits, SN_MAX_PAGE_SIZE } from './stackernews.js'
 import { selectRedirector } from './redirectors.js'
 import { findStatusLinks, buildComment, buildNoteContent } from './links.js'
 import { buildNote, publishNote, DEFAULT_RELAYS } from './nostr.js'
 
 const log = (...args) => console.log(new Date().toISOString(), ...args)
 
-// stacker.news pays for each comment from sats + cowboy credits (~1 sat), and
-// only writes it unpaid when both run out. This footnote only shows up when the
+// stacker.news pays ~1 sat per comment from the account balance and only writes
+// it unpaid once that balance is gone. This footnote only shows up when the
 // balance is low, so it never nags while the bot is funded.
 //
 // The address is in backticks on purpose: stacker.news autolinks bare emails and
@@ -119,10 +119,11 @@ async function main () {
 
   // 1 comment costs ~1 sat, so the balance is roughly the number of replies left
   const wallet = await sn.fetchWallet()
-  const balance = wallet.sats + wallet.credits
+  // `sats` already includes the cowboy credits, so adding them counts twice
+  const balance = spendableSats(wallet)
   const lowBalance = config.lowBalanceSats > 0 && balance < config.lowBalanceSats
   const footer = lowBalance ? config.fundingFooter : ''
-  log(`balance: ${wallet.sats} sats + ${wallet.credits} cowboy credits` +
+  log(`balance: ${balance} sats (${satsWithoutCredits(wallet)} sats + ${wallet.credits} cowboy credits)` +
     (footer ? ` (below ${config.lowBalanceSats}, replies will invite zaps)` : ''))
 
   const maxAgeMs = config.maxAgeMinutes * 60_000
@@ -241,7 +242,7 @@ async function main () {
     '### sn-twiiit run',
     '',
     `- redirector: \`${redirector.host}\`${redirector.attempts.length > 1 ? ` (after ${redirector.attempts.length - 1} unavailable)` : ''}`,
-    `- balance: ${wallet.sats} sats + ${wallet.credits} cowboy credits${footer ? ' (low, zap footer added)' : ''}`,
+    `- balance: ${balance} sats (${satsWithoutCredits(wallet)} sats + ${wallet.credits} cowboy credits)${footer ? ' (low, zap footer added)' : ''}`,
     `- scanned: ${stats.scanned} posts from the last ${config.maxAgeMinutes} min (${pages} page(s)${truncated ? ', truncated by MAX_PAGES' : ''}), ${stats.withLinks} with x.com links`,
     `- commented: ${stats.commented}${config.dryRun ? ' (dry run)' : ''}`,
     `- already handled: ${stats.alreadyCommented}`,

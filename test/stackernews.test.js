@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { generateSecretKey, getPublicKey, verifyEvent } from 'nostr-tools/pure'
 import { nip19 } from 'nostr-tools'
 
-import { buildAuthEvent, nsecToSecretKey, StackerNewsClient } from '../src/stackernews.js'
+import { buildAuthEvent, nsecToSecretKey, spendableSats, satsWithoutCredits, StackerNewsClient } from '../src/stackernews.js'
 
 function clientReturning (data) {
   const calls = []
@@ -75,11 +75,25 @@ test('accepts nsec and hex secret keys', () => {
 
 test('reads the balance that pays for comments', async () => {
   const { client, calls } = clientReturning({
-    me: { id: '36365', privates: { sats: 4, credits: 96, freeCommentsLeft: 5 } }
+    me: { id: '36365', privates: { sats: 100, credits: 96, freeCommentsLeft: 5 } }
   })
 
-  assert.deepEqual(await client.fetchWallet(), { sats: 4, credits: 96, freeCommentsLeft: 5 })
+  assert.deepEqual(await client.fetchWallet(), { sats: 100, credits: 96, freeCommentsLeft: 5 })
   assert.match(JSON.parse(calls[0].body).query, /privates\s*{\s*sats\s+credits/)
+})
+
+test('counts cowboy credits once, since stacker.news folds them into sats', () => {
+  // api/resolvers/user.js resolves sats as msatsToSats(msats) + msatsToSats(mcredits)
+  // and its affordability check uses msats + mcredits, so the total is sats
+  const wallet = { sats: 10, credits: 10 }
+
+  assert.equal(spendableSats(wallet), 10)
+  assert.notEqual(spendableSats(wallet), wallet.sats + wallet.credits)
+  assert.equal(satsWithoutCredits(wallet), 0)
+  assert.equal(satsWithoutCredits({ sats: 100, credits: 96 }), 4)
+  assert.equal(satsWithoutCredits({ sats: 0, credits: 0 }), 0)
+  // defensive: credits should never push the plain sats part negative
+  assert.equal(satsWithoutCredits({ sats: 3, credits: 5 }), 0)
 })
 
 test('refuses to guess a balance when the session is not authenticated', async () => {

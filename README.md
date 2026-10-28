@@ -32,9 +32,11 @@ GitHub actually runs it):
    with the nsec (a NIP-98 style `kind 27235` event), and exchanges it for a
    session cookie via `/api/auth/callback/nostr`. It then verifies that the
    session belongs to `SN_BOT_NAME` (`twiiit`) and aborts otherwise.
-3. **Check the balance.** Reads the account's `sats` + cowboy credits and logs
-   them. Comments are paid from both (~1 sat each), so the balance is roughly how
-   many replies the bot can still post. When it drops below
+3. **Check the balance.** Reads the account's `sats` and `credits` and logs them
+   as `10 sats (0 sats + 10 cowboy credits)`. stacker.news already folds cowboys
+   into `sats`, so the total is `sats` alone — adding them would count the
+   credits twice. Comments cost ~1 sat, so the balance is roughly how many
+   replies the bot can still post. When it drops below
    `SN_LOW_BALANCE_SATS` (default 100), replies get a one line footnote inviting
    readers to zap them — see [Funding](#funding).
 4. **Scan.** Reads the newest items back to `ITEM_MAX_AGE_MINUTES` (default 180),
@@ -141,7 +143,7 @@ Set these in the workflow `env:` block or locally in `.env`:
 | `MAX_PAGES` | `5` | How many pages to read per run at most |
 | `MAX_COMMENTS_PER_RUN` | `20` | Comment limit per run |
 | `POST_DELAY_MS` | `5000` | Pause between comments |
-| `SN_LOW_BALANCE_SATS` | `100` | Balance (sats + cowboy credits) below which replies invite zaps |
+| `SN_LOW_BALANCE_SATS` | `100` | Spendable sats (cowboy credits included) below which replies invite zaps |
 | `SN_FUNDING_FOOTER` | `bot · funded by zaps — …` | Text of that footnote |
 | `NOSTR_RELAYS` | stacker.news crosspost relays | Comma separated relay list for notes |
 | `NOSTR_DISABLED` | off | Do not publish notes, only comment on stacker.news |

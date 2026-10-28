@@ -18,6 +18,20 @@ const REQUEST_TIMEOUT_MS = 30_000
 // cursor pages instead of one bigger request.
 export const SN_MAX_PAGE_SIZE = 100
 
+/**
+ * Spendable sats for a comment. stacker.news already folds the cowboy credits
+ * into `sats` (see `fetchWallet`), so these must never be added together.
+ * @param {{ sats?: number, credits?: number }} wallet
+ */
+export function spendableSats ({ sats } = {}) {
+  return Number(sats ?? 0)
+}
+
+/** The part of the balance that is not cowboy credits. */
+export function satsWithoutCredits ({ sats, credits } = {}) {
+  return Math.max(0, Number(sats ?? 0) - Number(credits ?? 0))
+}
+
 export class SnApiError extends Error {
   constructor (message, { status, errors } = {}) {
     super(message)
@@ -178,10 +192,14 @@ export class StackerNewsClient {
   }
 
   /**
-   * The account's spendable balance. stacker.news pays for comments from `sats`
-   * plus `credits` (cowboy credits, which is also where zaps to bios and free
-   * comments land), and only treats a comment as paid when both together cover
-   * its cost - so a low balance means comments will start coming out unpaid.
+   * The account's spendable balance.
+   *
+   * `sats` is already the total: stacker.news resolves it as
+   * `msatsToSats(msats) + msatsToSats(mcredits)` and documents the split as
+   * `sats - credits === msatsToSats(msats)` (api/resolvers/user.js), which is
+   * also what its affordability check uses (`msats + mcredits`). So `credits`
+   * is a part of `sats`, not a separate bucket - adding them counts the cowboy
+   * credits twice.
    * @returns {Promise<{ sats: number, credits: number, freeCommentsLeft: number }>}
    */
   async fetchWallet () {

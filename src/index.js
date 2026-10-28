@@ -5,9 +5,10 @@
 import { appendFile } from 'node:fs/promises'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-import { StackerNewsClient } from './stackernews.js'
+import { StackerNewsClient, nsecToSecretKey } from './stackernews.js'
 import { selectRedirector } from './redirectors.js'
-import { findStatusLinks, buildComment } from './links.js'
+import { findStatusLinks, buildComment, buildNoteContent } from './links.js'
+import { buildNote, publishNote, DEFAULT_RELAYS } from './nostr.js'
 
 const log = (...args) => console.log(new Date().toISOString(), ...args)
 
@@ -31,6 +32,15 @@ function envBool (name) {
   return /^(1|true|yes|on)$/i.test(String(process.env[name] ?? '').trim())
 }
 
+function envRelays (name, fallback) {
+  const raw = process.env[name]
+  if (raw == null || raw.trim() === '') return fallback
+  return raw.split(',')
+    .map(relay => relay.trim())
+    .filter(Boolean)
+    .map(relay => /^wss?:\/\//i.test(relay) ? relay : `wss://${relay}`)
+}
+
 function readConfig () {
   return {
     baseUrl: (process.env.SN_BASE_URL || 'https://stacker.news').trim(),
@@ -43,7 +53,10 @@ function readConfig () {
     maxCommentsPerRun: envInt('MAX_COMMENTS_PER_RUN', 20),
     postDelayMs: envInt('POST_DELAY_MS', 5000),
     lowBalanceSats: envInt('SN_LOW_BALANCE_SATS', 100),
-    fundingFooter: (process.env.SN_FUNDING_FOOTER || DEFAULT_FUNDING_FOOTER).trim()
+    fundingFooter: (process.env.SN_FUNDING_FOOTER || DEFAULT_FUNDING_FOOTER).trim(),
+    // stacker.news does not crosspost comments, so the bot publishes its own notes
+    publishNotes: !envBool('NOSTR_DISABLED'),
+    relays: envRelays('NOSTR_RELAYS', DEFAULT_RELAYS)
   }
 }
 
@@ -96,6 +109,10 @@ async function main () {
   }
   log(`logged in as ${me.name} (id ${me.id})`)
 
+  const snSiteUrl = config.baseUrl.replace(/\/+$/, '')
+  const noteKey = config.publishNotes ? nsecToSecretKey(config.nsec) : null
+  if (config.publishNotes) log(`replies are also published as nostr notes to ${config.relays.length} relay(s)`)
+
   // 1 comment costs ~1 sat, so the balance is roughly the number of replies left
   const wallet = await sn.fetchWallet()
   const balance = wallet.sats + wallet.credits
@@ -112,7 +129,7 @@ async function main () {
     .filter(item => isCandidate(item, { now: Date.now(), maxAgeMs, botName: config.botName }))
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
 
-  const stats = { scanned: candidates.length, withLinks: 0, commented: 0, alreadyCommented: 0, failed: 0, unpaid: 0 }
+  const stats = { scanned: candidates.length, withLinks: 0, commented: 0, alreadyCommented: 0, failed: 0, unpaid: 0, notesPublished: 0, notesFailed: 0 }
 
   for (const item of candidates) {
     if (stats.commented >= config.maxCommentsPerRun) {
@@ -148,6 +165,9 @@ async function main () {
       if (config.dryRun) {
         stats.commented++
         log(`[dry run] would comment on item ${item.id}:\n${text}`)
+        if (config.publishNotes) {
+          log(`[dry run] would publish note:\n${buildNoteContent(links, redirector.baseUrl, { snItemUrl: `${snSiteUrl}/items/${item.id}` })}`)
+        }
         continue
       }
 
@@ -157,6 +177,29 @@ async function main () {
       if (payIn.payInState === 'PAID') {
         stats.commented++
         log(`commented on item ${item.id} (comment ${commentId})`)
+
+        // the note mirrors a comment that actually went through, and a relay
+        // problem must never cost us the comment or the rest of the run
+        if (config.publishNotes) {
+          try {
+            const event = buildNote({
+              secretKey: noteKey,
+              content: buildNoteContent(links, redirector.baseUrl, { snItemUrl: `${snSiteUrl}/items/${item.id}` })
+            })
+            const result = await publishNote({ event, relays: config.relays })
+
+            if (result.accepted.length > 0) {
+              stats.notesPublished++
+              log(`published note ${event.id.slice(0, 8)} to ${result.accepted.length}/${config.relays.length} relays`)
+            } else {
+              stats.notesFailed++
+              log(`no relay accepted note ${event.id.slice(0, 8)}: ${result.failed.map(f => `${f.url} (${f.reason})`).join(', ')}`)
+            }
+          } catch (error) {
+            stats.notesFailed++
+            log(`could not publish a note for item ${item.id}: ${error.message}`)
+          }
+        }
       } else {
         stats.unpaid++
         const sats = payIn.mcost != null ? Number(payIn.mcost) / 1000 : null
@@ -174,7 +217,8 @@ async function main () {
   }
 
   const duration = ((Date.now() - startedAt) / 1000).toFixed(1)
-  log(`done in ${duration}s: ${stats.withLinks} posts with links, ${stats.commented} commented, ${stats.alreadyCommented} already handled, ${stats.failed} failed, ${stats.unpaid} unpaid`)
+  log(`done in ${duration}s: ${stats.withLinks} posts with links, ${stats.commented} commented, ${stats.alreadyCommented} already handled, ${stats.failed} failed, ${stats.unpaid} unpaid` +
+    (config.publishNotes ? `, ${stats.notesPublished} notes published, ${stats.notesFailed} notes failed` : ''))
 
   await writeStepSummary([
     '### sn-twiiit run',
@@ -186,6 +230,7 @@ async function main () {
     `- already handled: ${stats.alreadyCommented}`,
     `- failed: ${stats.failed}`,
     `- unpaid: ${stats.unpaid}`,
+    `- nostr notes: ${stats.notesPublished} published, ${stats.notesFailed} failed`,
     `- duration: ${duration}s`
   ].join('\n'))
 

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { findStatusLinks, toRedirectUrl, buildComment } from '../src/links.js'
+import { findStatusLinks, toRedirectUrl, buildComment, buildNoteContent } from '../src/links.js'
 
 test('finds x.com and twitter.com status links', () => {
   const links = findStatusLinks(
@@ -50,6 +50,16 @@ test('builds redirector urls and the comment body', () => {
     buildComment(links, 'https://twiiit.com'),
     'https://twiiit.com/jack/status/20\nhttps://twiiit.com/a/status/1'
   )
+})
+
+test('builds the note body with a pointer to the post', () => {
+  const links = findStatusLinks('https://x.com/jack/status/20')
+
+  assert.equal(
+    buildNoteContent(links, 'https://twiiit.com', { snItemUrl: 'https://stacker.news/items/42' }),
+    'https://twiiit.com/jack/status/20\n\nhttps://stacker.news/items/42'
+  )
+  assert.equal(buildNoteContent(links, 'https://twiiit.com'), 'https://twiiit.com/jack/status/20')
 })
 
 test('appends the funding footer as a gfm footnote', () => {

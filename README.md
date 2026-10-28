@@ -44,6 +44,9 @@ Every run (every 5 minutes):
    already commented on that post — using `newComments` for the post — so a run
    that overlaps or repeats never posts twice. At most `MAX_COMMENTS_PER_RUN`
    (default 20) comments are posted per run.
+6. **Crosspost.** Once a comment is actually paid for, the same links are signed
+   as a nostr note with the bot's key and published to relays — see
+   [Nostr notes](#nostr-notes).
 
 ## Setup
 
@@ -59,6 +62,32 @@ Every run (every 5 minutes):
    only get 5 free comments per month; after that the comment is created as an
    *unpaid*, invisible-to-others draft — the bot detects this, stops the run and
    fails the workflow so you notice.
+
+## Nostr notes
+
+Stacker News does not crosspost comments (its crossposter is wired to the post
+form and the manual share button), so the bot publishes its own `kind 1` notes
+with the same `nsec` it logs in with — no extra secret. A note contains the
+rewritten links plus a link to the stacker.news post:
+
+```
+https://twiiit.com/jack/status/20
+
+https://stacker.news/items/1603795
+```
+
+Relays are [the ones stacker.news crossposts to](https://github.com/stackernews/stacker.news/blob/master/lib/nostr.js)
+(`DEFAULT_RELAYS` in [src/nostr.js](src/nostr.js)), so notes land where SN
+crossposts land; `NOSTR_RELAYS` overrides them with a comma separated list, and
+`NOSTR_DISABLED=1` turns note publishing off.
+
+Notes are best effort: each relay is published to independently, a relay that is
+down, blocks datacenter IPs or never answers cannot hold up the run, and a note
+that reaches zero relays is logged and reported in the step summary without
+failing the workflow — the stacker.news comment already worked.
+
+Zaps on the notes go to the `lud16` in the bot's nostr profile
+(`twiiit@rizful.com`), so the note itself carries no donation text.
 
 ## Funding
 
@@ -105,6 +134,8 @@ Set these in the workflow `env:` block or locally in `.env`:
 | `POST_DELAY_MS` | `5000` | Pause between comments |
 | `SN_LOW_BALANCE_SATS` | `100` | Balance (sats + cowboy credits) below which replies invite zaps |
 | `SN_FUNDING_FOOTER` | `bot · funded by zaps — …` | Text of that footnote |
+| `NOSTR_RELAYS` | stacker.news crosspost relays | Comma separated relay list for notes |
+| `NOSTR_DISABLED` | off | Do not publish notes, only comment on stacker.news |
 
 ## Local development
 
@@ -129,11 +160,12 @@ npm test
   datacenter IP: a redirector may look healthy there but be rate limiting for
   some end users. The wiki list itself is the best source of truth for how well
   instances are doing.
-- If the account has nostr crossposting enabled, replies are published as notes
-  too. The funding footnote is markdown: clients that understand footnotes show a
-  small note at the bottom, plain text clients show the `[^1]:` line literally.
-  Stacker News also supports `<sub>…</sub>`, which is a drop-in alternative in
-  `buildComment` if the footnote looks bad on nostr.
+- The funding footnote only exists on stacker.news: it is markdown, and notes
+  are published as plain text, so it is deliberately left out of the note body
+  (zaps on the note go through the `lud16` in the bot's nostr profile). If you
+  ever move the ask into the note, avoid the footnote syntax — clients without
+  footnote support show `[^1]:` literally. Stacker News itself also supports
+  `<sub>…</sub>` if you prefer a smaller inline line.
 - GitHub disables scheduled workflows in public repositories after 60 days
   without repository activity, and a scheduled run is not documented as counting
   as activity by itself — so a bot that only runs on cron can quietly die. The

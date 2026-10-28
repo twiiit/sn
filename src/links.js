@@ -56,3 +56,13 @@ export function buildComment (links, redirectorBaseUrl, { footer } = {}) {
 
   return `${body} [^1]\n\n[^1]: ${text}`
 }
+
+/**
+ * The body of the nostr note: the same rewritten links, plus a pointer to the
+ * stacker.news post so note readers can find the discussion. No markdown, since
+ * relays hand the content to clients as plain text.
+ */
+export function buildNoteContent (links, redirectorBaseUrl, { snItemUrl } = {}) {
+  const body = links.map(link => toRedirectUrl(link, redirectorBaseUrl)).join('\n')
+  return snItemUrl ? `${body}\n\n${snItemUrl}` : body
+}

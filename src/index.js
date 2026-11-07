@@ -18,7 +18,7 @@ const log = (...args) => console.log(new Date().toISOString(), ...args)
 //
 // The address is in backticks on purpose: stacker.news autolinks bare emails and
 // ends up rendering the visible text as "mailto:twiiit@rizful.com".
-const DEFAULT_FUNDING_FOOTER = 'bot · funded by zaps — zap this comment or send sats to `twiiit@rizful.com`'
+const DEFAULT_FUNDING_FOOTER = '⚠ `bot` funded by the community →  zap this comment or send sats to `twiiit@rizful.com` to make this footnote disappear.'
 
 function envInt (name, fallback) {
   const raw = process.env[name]
